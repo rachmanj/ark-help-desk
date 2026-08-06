@@ -25,3 +25,8 @@ _ide_helper.php
 Homestead.json
 Homestead.yaml
 Thumbs.db
+
+# Docker volumes (don't commit runtime data)
+/arka_storage
+/arka_mysql_data
+docker-compose.override.yml
