@@ -47,42 +47,23 @@ class ProcessTicketWithAI implements ShouldQueue
             'subject' => $this->ticket->subject,
         ]);
 
-        // 1. FULLTEXT search — extract meaningful keywords first
+        // 1. Semantic search using embeddings (cosine similarity)
         $searchTerm = $this->ticket->subject . ' ' . $this->ticket->description;
 
-        // Strip common Indonesian stop words to boost relevance
-        $stopWords = ['bagaimana', 'cara', 'ke', 'di', 'yang', 'saya', 'aku',
-            'ini', 'itu', 'dan', 'atau', 'untuk', 'dengan', 'tidak', 'ada', 'bisa', 'tolong',
-            'mohon', 'minta', 'gimana', 'kok', 'sih', 'deh', 'dong', 'kan', 'ya', 'yah',
-            'gak', 'nggak', 'ga', 'sebuah', 'seorang', 'para', 'ialah', 'adalah'];
-        $cleaned = preg_replace('/[?.,!;:]/', '', strtolower($searchTerm));
-        $keywords = array_values(array_unique(array_filter(
-            explode(' ', $cleaned),
-            fn($w) => !in_array($w, $stopWords) && strlen($w) > 1
-        )));
-        $cleanSearch = implode(' ', $keywords) ?: $searchTerm;
+        $embeddingService = app(\App\Services\KbEmbeddingService::class);
+        try {
+            $searchResult = $embeddingService->search($searchTerm, 5);
+        } catch (\Exception $e) {
+            Log::warning('Embedding search failed, falling back to FULLTEXT', ['error' => $e->getMessage()]);
+            $searchResult = $this->fallbackFulltextSearch($searchTerm);
+        }
 
-        $kbArticles = KBArticle::query()
-            ->where('is_published', true)
-            ->whereRaw(
-                'MATCH(title, content) AGAINST(? IN BOOLEAN MODE)',
-                [$cleanSearch]
-            )
-            ->selectRaw(
-                '*, MATCH(title, content) AGAINST(? IN BOOLEAN MODE) AS relevance',
-                [$cleanSearch]
-            )
-            ->orderByDesc('relevance')
-            ->limit(5)
-            ->get();
-
-        $topScore = $kbArticles->first()?->relevance ?? 0;
-        $threshold = (float) env('AI_CONFIDENCE_THRESHOLD', 0.2);
+        $kbArticles = collect($searchResult['articles'])->map(fn($a) => $a['article']);
+        $topScore = $searchResult['top_score'];
+        $threshold = (float) env('AI_CONFIDENCE_THRESHOLD', 0.4);
 
         Log::info('ProcessTicketWithAI — hasil pencarian KB', [
             'ticket_id' => $this->ticket->id,
-            'original_query' => $searchTerm,
-            'clean_query' => $cleanSearch,
             'articles_found' => $kbArticles->count(),
             'top_score' => $topScore,
             'threshold' => $threshold,
@@ -231,5 +212,43 @@ class ProcessTicketWithAI implements ShouldQueue
 
             event(new \App\Events\TicketEscalated($this->ticket));
         }
+    }
+
+    /**
+     * Fallback: MySQL FULLTEXT search when embedding search fails.
+     *
+     * @return array{articles: array, top_score: float}
+     */
+    private function fallbackFulltextSearch(string $searchTerm): array
+    {
+        $articles = KBArticle::published()
+            ->whereRaw(
+                "MATCH(title, content) AGAINST(? IN BOOLEAN MODE)",
+                [$searchTerm]
+            )
+            ->orderByRaw(
+                'MATCH(title, content) AGAINST(?) DESC',
+                [$searchTerm]
+            )
+            ->limit(5)
+            ->get();
+
+        $scored = $articles->map(function ($article) {
+            return [
+                'article' => $article,
+                'score' => 0.5,
+                'content' => $article->content,
+            ];
+        })->all();
+
+        Log::info('ProcessTicketWithAI — FULLTEXT fallback used', [
+            'ticket_id' => $this->ticket->id,
+            'articles_found' => count($scored),
+        ]);
+
+        return [
+            'articles' => $scored,
+            'top_score' => count($scored) > 0 ? 0.5 : 0.0,
+        ];
     }
 }
