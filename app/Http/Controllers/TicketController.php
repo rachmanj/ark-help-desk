@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Enums\TicketPriority;
 use App\Enums\TicketStatus;
+use App\Events\TicketResolved;
 use App\Models\AppInfo;
 use App\Models\Ticket;
 use App\Models\TicketMessage;
@@ -105,8 +106,14 @@ class TicketController extends Controller
         ]);
 
         if (isset($validated['status'])) {
+            $oldStatus = $ticket->status;
             if (! $ticket->transitionTo($validated['status'])) {
                 return back()->with('error', 'Transisi status tidak valid.');
+            }
+
+            // Fire event when ticket is resolved
+            if ($validated['status'] === TicketStatus::Resolved->value && $oldStatus !== TicketStatus::Resolved->value) {
+                event(new TicketResolved($ticket));
             }
         }
 

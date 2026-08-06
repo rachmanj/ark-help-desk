@@ -27,4 +27,40 @@ class TelegramSession extends Model
     {
         return $this->belongsTo(User::class);
     }
+
+    /**
+     * Set the conversation state.
+     * State is stored as JSON: ['status' => '...', ...extra data]
+     */
+    public function setState(string $status, array $extra = []): void
+    {
+        $this->state = array_merge($extra, ['status' => $status]);
+        $this->last_activity_at = now();
+        $this->save();
+    }
+
+    /**
+     * Get the current status from the state machine.
+     */
+    public function getStatus(): string
+    {
+        return $this->state['status'] ?? 'idle';
+    }
+
+    /**
+     * Check if the session is in a given state.
+     */
+    public function isInState(string $status): bool
+    {
+        return $this->getStatus() === $status;
+    }
+
+    /**
+     * Touch the last_activity_at timestamp.
+     */
+    public function touchActivity(): void
+    {
+        $this->last_activity_at = now();
+        $this->save();
+    }
 }

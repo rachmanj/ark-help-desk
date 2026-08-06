@@ -2,10 +2,11 @@ import React, { useState } from 'react';
 import { usePage, router } from '@inertiajs/react';
 import {
     Card, Descriptions, Tag, Button, Space, Typography, Select, Divider,
-    List, Avatar, Input, Alert, Row, Col, message,
+    List, Avatar, Input, Alert, Row, Col, message, Badge,
 } from 'antd';
 import {
     UserOutlined, RobotOutlined, CustomerServiceOutlined, ArrowLeftOutlined,
+    BranchesOutlined, SendOutlined, ClockCircleOutlined,
 } from '@ant-design/icons';
 import AuthenticatedLayout from '@/Pages/Layouts/AuthenticatedLayout';
 
@@ -22,6 +23,20 @@ const statusLabels = {
 };
 const priorityColors = { low: 'default', medium: 'blue', high: 'orange', critical: 'red' };
 const priorityLabels = { low: 'Rendah', medium: 'Sedang', high: 'Tinggi', critical: 'Kritis' };
+
+// Status badge component
+function StatusBadge({ status }) {
+    return (
+        <Badge
+            status={statusColors[status] || 'default'}
+            text={
+                <Tag color={statusColors[status]} style={{ margin: 0 }}>
+                    {statusLabels[status] || status}
+                </Tag>
+            }
+        />
+    );
+}
 
 export default function TicketsShow({ ticket, statuses }) {
     const [messageText, setMessageText] = useState('');
@@ -49,6 +64,26 @@ export default function TicketsShow({ ticket, statuses }) {
     const handleReply = () => {
         if (!messageText.trim()) return;
         setSubmitting(true);
+
+        // If ticket is from Telegram, send via Telegram bot API
+        if (ticket.source === 'telegram') {
+            router.post(`/api/telegram/reply/${ticket.id}`, {
+                message: messageText,
+            }, {
+                preserveScroll: true,
+                onSuccess: () => {
+                    setMessageText('');
+                    setSubmitting(false);
+                    message.success('Balasan dikirim melalui Telegram.');
+                },
+                onError: () => {
+                    setSubmitting(false);
+                    message.error('Gagal mengirim balasan.');
+                },
+            });
+            return;
+        }
+
         router.patch(`/tickets/${ticket.id}`, {
             message: messageText,
             status: selectedStatus,
@@ -85,6 +120,7 @@ export default function TicketsShow({ ticket, statuses }) {
                     </Col>
                     <Col>
                         <Space>
+                            <StatusBadge status={ticket.status} />
                             <Select
                                 value={selectedStatus}
                                 onChange={handleStatusChange}
@@ -98,14 +134,16 @@ export default function TicketsShow({ ticket, statuses }) {
                     </Col>
                 </Row>
                 <Divider style={{ margin: '12px 0' }} />
-                <Descriptions column={{ xs: 1, sm: 2, md: 3 }} size="small">
+                <Descriptions column={{ xs: 1, sm: 2, md: 4 }} size="small">
                     <Descriptions.Item label="Aplikasi">{ticket.app?.name}</Descriptions.Item>
                     <Descriptions.Item label="Pelapor">{ticket.user?.name}</Descriptions.Item>
                     <Descriptions.Item label="Prioritas">
                         <Tag color={priorityColors[ticket.priority]}>{priorityLabels[ticket.priority]}</Tag>
                     </Descriptions.Item>
                     <Descriptions.Item label="Sumber">
-                        <Tag>{ticket.source === 'web' ? 'Web' : 'Telegram'}</Tag>
+                        <Tag icon={ticket.source === 'telegram' ? <SendOutlined /> : null} color={ticket.source === 'telegram' ? 'blue' : 'default'}>
+                            {ticket.source === 'web' ? 'Web' : 'Telegram'}
+                        </Tag>
                     </Descriptions.Item>
                     <Descriptions.Item label="Dibuat">
                         {new Date(ticket.created_at).toLocaleString('id-ID')}
@@ -116,6 +154,18 @@ export default function TicketsShow({ ticket, statuses }) {
                         </Descriptions.Item>
                     )}
                 </Descriptions>
+
+                {/* Telegram source info */}
+                {ticket.source === 'telegram' && (
+                    <Alert
+                        style={{ marginTop: 12 }}
+                        message="Tiket dari Telegram"
+                        description="Balasan akan dikirim melalui Telegram Bot ke pengguna."
+                        type="info"
+                        showIcon
+                        icon={<BranchesOutlined />}
+                    />
+                )}
             </Card>
 
             {/* Messages Thread */}
@@ -144,20 +194,21 @@ export default function TicketsShow({ ticket, statuses }) {
             </Card>
 
             {/* Reply Box */}
-            <Card title="Balas">
+            <Card title={ticket.source === 'telegram' ? 'Balas via Telegram' : 'Balas'}>
                 <Space direction="vertical" style={{ width: '100%' }} size="middle">
                     <TextArea
                         rows={4}
-                        placeholder="Ketik balasan..."
+                        placeholder={ticket.source === 'telegram' ? 'Balasan akan dikirim melalui Telegram Bot...' : 'Ketik balasan...'}
                         value={messageText}
                         onChange={e => setMessageText(e.target.value)}
                     />
                     <Button
                         type="primary"
+                        icon={ticket.source === 'telegram' ? <SendOutlined /> : null}
                         onClick={handleReply}
                         loading={submitting}
                     >
-                        Kirim Balasan
+                        {ticket.source === 'telegram' ? 'Kirim via Telegram' : 'Kirim Balasan'}
                     </Button>
                 </Space>
             </Card>
