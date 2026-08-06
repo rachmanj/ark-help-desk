@@ -28,9 +28,11 @@ return Application::configure(basePath: dirname(__DIR__))
         );
 
         // Redirect unauthenticated users to login instead of returning JSON
-        $exceptions->respond(function (\Illuminate\Http\JsonResponse $response, Throwable $e, Request $request) {
+        $exceptions->respond(function ($response, Throwable $e, Request $request) {
             if ($e instanceof \Illuminate\Auth\AuthenticationException && !$request->is('api/*')) {
                 return redirect()->route('login');
             }
+
+            return $response;
         });
     })->create();
