@@ -135,7 +135,7 @@ class ProcessTicketWithAI implements ShouldQueue
                 ],
                 'response' => $reply,
                 'tokens_used' => ($result['tokens_in'] ?? 0) + ($result['tokens_out'] ?? 0),
-                'model' => $result['model'] ?? config('services.openrouter.model'),
+                'model' => $result['model'] ?? config('services.ai.model'),
                 'cost' => $result['cost'] ?? 0,
             ]);
 

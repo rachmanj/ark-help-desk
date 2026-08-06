@@ -9,13 +9,9 @@ use Illuminate\Support\Facades\Log;
 class OpenRouterService
 {
     /**
-     * Ask the KB — send KB articles + user info to OpenRouter and get an AI reply.
+     * Ask the KB — send KB articles + user info to AI provider and get a reply.
      *
-     * @param Ticket $ticket The ticket being processed
-     * @param array $kbArticles Array of KBArticle models (top matches)
-     * @return array{reply: string, tokens_in: int, tokens_out: int, cost: float}
-     *
-     * @throws \RuntimeException On API failure
+     * Supports: OpenRouter, DeepSeek (OpenAI-compatible)
      */
     public function askKB(Ticket $ticket, array $kbArticles): array
     {
@@ -23,33 +19,39 @@ class OpenRouterService
             throw new \RuntimeException('AI is disabled via AI_ENABLED=false.');
         }
 
-        $apiKey = config('services.openrouter.key');
+        $provider = config('services.ai.provider', 'openrouter');
+        $apiKey = config('services.ai.key');
+        $model = config('services.ai.model', 'deepseek-chat');
+        $maxTokens = (int) config('services.ai.max_tokens', 1024);
+        $temperature = (float) config('services.ai.temperature', 0.7);
+
         if (empty($apiKey) || $apiKey === 'placeholder') {
-            throw new \RuntimeException('OPENROUTER_API_KEY belum dikonfigurasi.');
+            throw new \RuntimeException('AI_API_KEY belum dikonfigurasi.');
         }
 
-        $model = config('services.openrouter.model', 'openai/gpt-4o-mini');
-        $maxTokens = (int) config('services.openrouter.max_tokens', 1024);
-        $temperature = (float) config('services.openrouter.temperature', 0.7);
+        $endpoint = match ($provider) {
+            'deepseek' => 'https://api.deepseek.com/v1/chat/completions',
+            default => 'https://openrouter.ai/api/v1/chat/completions',
+        };
 
         $appName = $ticket->app?->name ?? 'ARKA HelpDesk';
 
-        // Build KB context
-        $kbContext = '';
-        if (count($kbArticles) > 0) {
-            $kbContext = "📚 <b>Artikel Knowledge Base yang Relevan:</b>\n\n";
-            foreach ($kbArticles as $i => $article) {
-                $num = $i + 1;
-                $kbContext .= "{$num}. <b>{$article->title}</b>\n{$article->content}\n\n";
-            }
-        }
-
+        // Build system + user prompt
         $systemPrompt = "Kamu adalah ARKA HelpDesk, bot bantuan untuk {$appName}. "
             . "Tugasmu adalah membantu pengguna menyelesaikan masalah mereka berdasarkan artikel knowledge base yang diberikan. "
             . "Gunakan Bahasa Indonesia yang ramah, jelas, dan profesional. "
             . "Berikan langkah-langkah yang actionable dan spesifik. "
             . "Jika artikel knowledge base tidak cukup untuk menjawab pertanyaan pengguna, "
             . "akui keterbatasanmu dan akhiri dengan 'tidak membantu' agar tiket dieskalasi ke tim support manusia.";
+
+        $kbContext = '';
+        if (count($kbArticles) > 0) {
+            $kbContext = "📚 Artikel Knowledge Base yang Relevan:\n\n";
+            foreach ($kbArticles as $i => $article) {
+                $num = $i + 1;
+                $kbContext .= "{$num}. {$article->title}\n{$article->content}\n\n";
+            }
+        }
 
         $userPrompt = "Pengguna mengirimkan pertanyaan berikut:\n\n"
             . "\"{$ticket->subject}\"\n\n"
@@ -75,28 +77,34 @@ class OpenRouterService
             'temperature' => $temperature,
         ];
 
-        Log::info('OpenRouter API call', [
+        Log::info('AI API call', [
             'ticket_id' => $ticket->id,
+            'provider' => $provider,
             'model' => $model,
             'kb_articles_count' => count($kbArticles),
         ]);
 
-        $response = Http::withToken($apiKey)
-            ->timeout(30)
-            ->withHeaders([
+        $http = Http::withToken($apiKey)->timeout(60);
+
+        // OpenRouter-specific headers
+        if ($provider === 'openrouter') {
+            $http->withHeaders([
                 'HTTP-Referer' => config('app.url', 'http://localhost'),
                 'X-Title' => 'ARKA HelpDesk',
-            ])
-            ->post('https://openrouter.ai/api/v1/chat/completions', $payload);
+            ]);
+        }
+
+        $response = $http->post($endpoint, $payload);
 
         if (! $response->successful()) {
-            Log::error('OpenRouter API error', [
+            Log::error('AI API error', [
+                'provider' => $provider,
                 'status' => $response->status(),
                 'body' => $response->body(),
                 'ticket_id' => $ticket->id,
             ]);
             throw new \RuntimeException(
-                'OpenRouter API error: HTTP ' . $response->status() . ' — ' . $response->body()
+                "AI API error ({$provider}): HTTP {$response->status()}"
             );
         }
 
@@ -105,10 +113,12 @@ class OpenRouterService
         $reply = $data['choices'][0]['message']['content'] ?? '';
         $tokensIn = $data['usage']['prompt_tokens'] ?? 0;
         $tokensOut = $data['usage']['completion_tokens'] ?? 0;
-        $cost = $this->calculateCost($model, $tokensIn, $tokensOut);
+        $cost = $this->calculateCost($provider, $model, $tokensIn, $tokensOut);
 
-        Log::info('OpenRouter API success', [
+        Log::info('AI API success', [
             'ticket_id' => $ticket->id,
+            'provider' => $provider,
+            'model' => $model,
             'tokens_in' => $tokensIn,
             'tokens_out' => $tokensOut,
             'cost' => $cost,
@@ -124,31 +134,21 @@ class OpenRouterService
     }
 
     /**
-     * Calculate OpenRouter cost for GPT-4o Mini.
+     * Calculate cost based on provider and model.
      *
-     * Pricing (per 1M tokens):
-     *   - Input:  $0.15
-     *   - Output: $0.60
-     *
-     * @param string $model  Model identifier (for future multi-model support)
-     * @param int $tokensIn  Prompt tokens used
-     * @param int $tokensOut Completion tokens used
-     * @return float Cost in USD
+     * Pricing per 1M tokens:
+     *   DeepSeek V3: $0.27 input / $1.10 output
+     *   GPT-4o Mini (OpenRouter): $0.15 input / $0.60 output
      */
-    public function calculateCost(string $model, int $tokensIn, int $tokensOut): float
+    public function calculateCost(string $provider, string $model, int $tokensIn, int $tokensOut): float
     {
-        // gpt-4o-mini pricing via OpenRouter
-        $pricePerMillionIn = 0.15;
-        $pricePerMillionOut = 0.60;
+        $pricing = match ($provider) {
+            'deepseek' => ['in' => 0.27, 'out' => 1.10],
+            default => ['in' => 0.15, 'out' => 0.60],
+        };
 
-        // Adjust for other models if needed in the future
-        if (str_contains($model, 'gpt-4o')) {
-            $pricePerMillionIn = 0.15;
-            $pricePerMillionOut = 0.60;
-        }
-
-        $cost = ($tokensIn / 1_000_000 * $pricePerMillionIn)
-            + ($tokensOut / 1_000_000 * $pricePerMillionOut);
+        $cost = ($tokensIn / 1_000_000 * $pricing['in'])
+            + ($tokensOut / 1_000_000 * $pricing['out']);
 
         return round($cost, 8);
     }
