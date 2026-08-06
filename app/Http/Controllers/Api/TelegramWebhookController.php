@@ -31,7 +31,18 @@ class TelegramWebhookController extends Controller
     public function handle(Request $request): \Illuminate\Http\JsonResponse
     {
         try {
-            $update = new Update($request->all());
+            $data = $request->all();
+            $updateId = $data['update_id'] ?? null;
+
+            // Deduplicate: Telegram may retry webhooks, causing duplicate processing
+            if ($updateId && \Illuminate\Support\Facades\Cache::has("tg_update:{$updateId}")) {
+                return response()->json(['ok' => true, 'dedup' => true]);
+            }
+            if ($updateId) {
+                \Illuminate\Support\Facades\Cache::put("tg_update:{$updateId}", true, now()->addMinutes(5));
+            }
+
+            $update = new Update($data);
 
             // Handle callback queries (inline button presses)
             if ($update->isType('callback_query')) {
