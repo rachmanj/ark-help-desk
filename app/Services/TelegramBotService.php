@@ -184,14 +184,14 @@ class TelegramBotService
         $text = "🏢 <b>ARKA HelpDesk</b>\n\n"
             . 'Selamat datang di ARKA HelpDesk! Silakan pilih menu di bawah ini:';
 
-        $keyboard = json_encode([
+        $keyboard = [
             'keyboard' => [
                 [['text' => '🎫 Buat Tiket'], ['text' => '📋 Tiket Saya']],
                 [['text' => '📱 Daftar Aplikasi'], ['text' => '❓ Bantuan']],
             ],
             'resize_keyboard' => true,
             'one_time_keyboard' => false,
-        ]);
+        ];
 
         return $this->sendMessage($chatId, $text, [
             'reply_markup' => $keyboard,
