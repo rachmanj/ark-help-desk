@@ -193,8 +193,6 @@ class TelegramBotService
             'one_time_keyboard' => false,
         ];
 
-        return $this->sendMessage($chatId, $text, [
-            'reply_markup' => $keyboard,
-        ]);
+        return $this->sendMessage($chatId, $text, $keyboard);
     }
 }
