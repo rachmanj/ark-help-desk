@@ -6,6 +6,8 @@ import {
     ExclamationCircleOutlined,
     CheckCircleOutlined,
     ClockCircleOutlined,
+    RobotOutlined,
+    DollarOutlined,
 } from '@ant-design/icons';
 import AuthenticatedLayout from '@/Pages/Layouts/AuthenticatedLayout';
 
@@ -98,6 +100,34 @@ export default function DashboardIndex({ stats, recentTickets }) {
                             value={stats.resolved_today}
                             prefix={<CheckCircleOutlined />}
                             valueStyle={{ color: '#52c41a' }}
+                        />
+                    </Card>
+                </Col>
+            </Row>
+
+            {/* AI Stats Row */}
+            <Row gutter={[16, 16]} style={{ marginBottom: 32 }}>
+                <Col xs={24} sm={12} lg={6}>
+                    <Card>
+                        <Statistic
+                            title="Tiket Diselesaikan AI"
+                            value={stats.ai_solve_rate}
+                            suffix="%"
+                            precision={1}
+                            prefix={<RobotOutlined />}
+                            valueStyle={{ color: '#722ed1' }}
+                        />
+                    </Card>
+                </Col>
+                <Col xs={24} sm={12} lg={6}>
+                    <Card>
+                        <Statistic
+                            title="Biaya AI Bulan Ini"
+                            value={stats.ai_cost_this_month}
+                            precision={4}
+                            prefix={<DollarOutlined />}
+                            suffix="USD"
+                            valueStyle={{ color: '#13c2c2' }}
                         />
                     </Card>
                 </Col>

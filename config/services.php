@@ -35,4 +35,11 @@ return [
         ],
     ],
 
+    'openrouter' => [
+        'key' => env('OPENROUTER_API_KEY'),
+        'model' => env('OPENROUTER_MODEL', 'openai/gpt-4o-mini'),
+        'max_tokens' => env('OPENROUTER_MAX_TOKENS', 1024),
+        'temperature' => env('OPENROUTER_TEMPERATURE', 0.7),
+    ],
+
 ];

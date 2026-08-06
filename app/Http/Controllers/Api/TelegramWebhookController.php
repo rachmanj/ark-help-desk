@@ -407,10 +407,13 @@ class TelegramWebhookController extends Controller
             . 'Tiket Anda sedang diproses. Kami akan memberitahu Anda jika ada update.'
         );
 
+        // Send AI search indicator
+        $this->bot->sendMessage($chatId, '⏳ Mencari jawaban di knowledge base...');
+
         // Fire event
         event(new \App\Events\TicketCreated($ticket));
 
-        // Dispatch AI processing job (stub for now)
+        // Dispatch AI processing job
         ProcessTicketWithAI::dispatch($ticket);
 
         return response()->json(['ok' => true]);
