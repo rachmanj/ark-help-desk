@@ -36,14 +36,15 @@ class OpenRouterService
 
         $appName = $ticket->app?->name ?? 'ARKA HelpDesk';
 
-        // Build system + user prompt
-        $systemPrompt = "Kamu adalah ARKA HelpDesk, bot bantuan untuk {$appName}. "
-            . "Tugasmu adalah membantu pengguna menyelesaikan masalah mereka berdasarkan artikel knowledge base yang diberikan. "
+        // Build system + user prompt (Sarang ERP style — assertive, context-bound)
+        $systemPrompt = "Kamu adalah ARKA HelpDesk, bot bantuan dalam aplikasi untuk {$appName}. "
+            . "Jawab HANYA menggunakan KONTEKS yang diberikan di bawah ini. "
+            . "Lingkup: langkah-langkah how-to dan di mana menemukan fitur di aplikasi ini. "
             . "Gunakan Bahasa Indonesia yang ramah, jelas, dan profesional. "
-            . "Berikan langkah-langkah yang actionable dan spesifik. "
-            . "Jika artikel knowledge base tidak cukup untuk menjawab pertanyaan pengguna, "
-            . "akui keterbatasanmu dan akhiri jawabanmu dengan kata [ESCALATE] agar tiket diteruskan ke tim support manusia. "
-            . "JANGAN gunakan kata [ESCALATE] dalam contoh atau penjelasan — hanya gunakan saat kamu benar-benar tidak bisa membantu.";
+            . "Berikan langkah-langkah actionable dengan nomor urut. "
+            . "Jika KONTEKS tidak mengandung cukup detail untuk menjawab, katakan dengan singkat bahwa hal tersebut belum terdokumentasi "
+            . "dan akhiri dengan baris terpisah berisi [ESCALATE]. "
+            . "JANGAN mengarang menu, tombol, atau nama field yang tidak disebutkan dalam KONTEKS.";
 
         $kbContext = '';
         if (count($kbArticles) > 0) {
@@ -54,19 +55,15 @@ class OpenRouterService
             }
         }
 
-        $userPrompt = "Pengguna mengirimkan pertanyaan berikut:\n\n"
-            . "\"{$ticket->subject}\"\n\n"
-            . "Deskripsi tambahan: {$ticket->description}\n\n";
+        $userPrompt = "KONTEKS (dokumentasi {$appName} — jangan mengarang di luar ini):\\n\\n{$kbContext}\\n\\n"
+            . "PERTANYAAN PENGGUNA:\\n"
+            . "\"{$ticket->subject}\"\\n\\n"
+            . "Deskripsi tambahan: {$ticket->description}";
 
-        if (count($kbArticles) > 0) {
-            $userPrompt .= "Gunakan artikel knowledge base berikut untuk menjawab:\n\n{$kbContext}";
-        } else {
-            $userPrompt .= "Tidak ada artikel knowledge base yang cocok untuk pertanyaan ini.";
+        if (count($kbArticles) === 0) {
+            $userPrompt = "PERTANYAAN PENGGUNA:\\n\"{$ticket->subject}\"\\n\\nDeskripsi: {$ticket->description}\\n\\n"
+                . "(Tidak ada KONTEKS dokumentasi yang cocok — jika tidak bisa menjawab, balas dengan [ESCALATE])";
         }
-
-        $userPrompt .= "\nBerikan jawaban yang membantu dan profesional dalam Bahasa Indonesia. "
-            . "Jika artikel yang diberikan tidak cukup menyelesaikan masalah atau kamu tidak yakin dengan jawabannya, "
-            . "balas hanya dengan kata [ESCALATE] (tanpa teks lain).";
 
         $payload = [
             'model' => $model,

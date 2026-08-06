@@ -140,6 +140,16 @@ class ProcessTicketWithAI implements ShouldQueue
             // 5. Update ticket status
             $this->ticket->transitionTo(TicketStatus::AiReplied->value);
 
+            // 6. Send AI reply to user via Telegram
+            try {
+                $chatId = $this->ticket->metadata['chat_id'] ?? null;
+                if ($chatId) {
+                    app(\App\Services\TelegramBotService::class)->sendMessage($chatId, $reply);
+                }
+            } catch (\Exception $e) {
+                Log::warning('Gagal kirim balasan AI ke Telegram', ['error' => $e->getMessage()]);
+            }
+
             Log::info('ProcessTicketWithAI — tiket dibalas AI', [
                 'ticket_id' => $this->ticket->id,
                 'reply_length' => mb_strlen($reply),
