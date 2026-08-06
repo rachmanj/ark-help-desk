@@ -47,29 +47,42 @@ class ProcessTicketWithAI implements ShouldQueue
             'subject' => $this->ticket->subject,
         ]);
 
-        // 1. FULLTEXT search on KB articles for this app
+        // 1. FULLTEXT search — extract meaningful keywords first
         $searchTerm = $this->ticket->subject . ' ' . $this->ticket->description;
 
+        // Strip common Indonesian stop words to boost relevance
+        $stopWords = ['bagaimana', 'cara', 'ke', 'di', 'yang', 'saya', 'aku',
+            'ini', 'itu', 'dan', 'atau', 'untuk', 'dengan', 'tidak', 'ada', 'bisa', 'tolong',
+            'mohon', 'minta', 'gimana', 'kok', 'sih', 'deh', 'dong', 'kan', 'ya', 'yah',
+            'gak', 'nggak', 'ga', 'sebuah', 'seorang', 'para', 'ialah', 'adalah'];
+        $cleaned = preg_replace('/[?.,!;:]/', '', strtolower($searchTerm));
+        $keywords = array_values(array_unique(array_filter(
+            explode(' ', $cleaned),
+            fn($w) => !in_array($w, $stopWords) && strlen($w) > 1
+        )));
+        $cleanSearch = implode(' ', $keywords) ?: $searchTerm;
+
         $kbArticles = KBArticle::query()
-            ->where('app_id', $this->ticket->app_id)
             ->where('is_published', true)
             ->whereRaw(
                 'MATCH(title, content) AGAINST(? IN BOOLEAN MODE)',
-                [$searchTerm]
+                [$cleanSearch]
             )
             ->selectRaw(
-                '*, MATCH(title, content) AGAINST(?) AS relevance',
-                [$searchTerm]
+                '*, MATCH(title, content) AGAINST(? IN BOOLEAN MODE) AS relevance',
+                [$cleanSearch]
             )
             ->orderByDesc('relevance')
-            ->limit(3)
+            ->limit(5)
             ->get();
 
         $topScore = $kbArticles->first()?->relevance ?? 0;
-        $threshold = (float) env('AI_CONFIDENCE_THRESHOLD', 0.6);
+        $threshold = (float) env('AI_CONFIDENCE_THRESHOLD', 0.2);
 
         Log::info('ProcessTicketWithAI — hasil pencarian KB', [
             'ticket_id' => $this->ticket->id,
+            'original_query' => $searchTerm,
+            'clean_query' => $cleanSearch,
             'articles_found' => $kbArticles->count(),
             'top_score' => $topScore,
             'threshold' => $threshold,
@@ -95,8 +108,12 @@ class ProcessTicketWithAI implements ShouldQueue
 
             $reply = trim($result['reply']);
 
-            // Check if AI indicated it cannot help
-            if (stripos($reply, 'tidak membantu') !== false || empty($reply)) {
+            // Check if AI indicated it cannot help (checks for [ESCALATE] marker)
+            $cannotHelp = empty($reply)
+                || str_starts_with(trim($reply), '[ESCALATE]')
+                || (mb_strlen($reply) < 20 && stripos($reply, 'escalate') !== false);
+
+            if ($cannotHelp) {
                 Log::info('ProcessTicketWithAI — AI tidak dapat membantu, eskalasi', [
                     'ticket_id' => $this->ticket->id,
                     'reply_preview' => mb_substr($reply, 0, 100),

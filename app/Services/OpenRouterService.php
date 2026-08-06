@@ -42,7 +42,8 @@ class OpenRouterService
             . "Gunakan Bahasa Indonesia yang ramah, jelas, dan profesional. "
             . "Berikan langkah-langkah yang actionable dan spesifik. "
             . "Jika artikel knowledge base tidak cukup untuk menjawab pertanyaan pengguna, "
-            . "akui keterbatasanmu dan akhiri dengan 'tidak membantu' agar tiket dieskalasi ke tim support manusia.";
+            . "akui keterbatasanmu dan akhiri jawabanmu dengan kata [ESCALATE] agar tiket diteruskan ke tim support manusia. "
+            . "JANGAN gunakan kata [ESCALATE] dalam contoh atau penjelasan — hanya gunakan saat kamu benar-benar tidak bisa membantu.";
 
         $kbContext = '';
         if (count($kbArticles) > 0) {
@@ -65,7 +66,7 @@ class OpenRouterService
 
         $userPrompt .= "\nBerikan jawaban yang membantu dan profesional dalam Bahasa Indonesia. "
             . "Jika artikel yang diberikan tidak cukup menyelesaikan masalah atau kamu tidak yakin dengan jawabannya, "
-            . "balas 'tidak membantu' dan kami akan eskalasi ke tim support.";
+            . "balas hanya dengan kata [ESCALATE] (tanpa teks lain).";
 
         $payload = [
             'model' => $model,
