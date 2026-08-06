@@ -29,7 +29,7 @@ class TelegramBotService
     /**
      * Send a text message to a chat.
      */
-    public function sendMessage(string $chatId, string $text, ?array $keyboard = null, string $parseMode = 'HTML'): ?array
+    public function sendMessage(string $chatId, string $text, ?array $keyboard = null, string $parseMode = 'HTML'): mixed
     {
         try {
             $params = [
@@ -56,7 +56,7 @@ class TelegramBotService
     /**
      * Send an inline keyboard message.
      */
-    public function sendInlineKeyboard(string $chatId, string $text, array $buttons, int $columns = 2): ?array
+    public function sendInlineKeyboard(string $chatId, string $text, array $buttons, int $columns = 2): mixed
     {
         $inlineKeyboard = [];
 
@@ -117,7 +117,7 @@ class TelegramBotService
     /**
      * Forward a message to the admin (Iwan).
      */
-    public function forwardToAdmin(string $text, ?array $keyboard = null): ?array
+    public function forwardToAdmin(string $text, ?array $keyboard = null): mixed
     {
         $adminId = config('telegram.admin_id');
 
@@ -133,7 +133,7 @@ class TelegramBotService
     /**
      * Notify a user via Telegram.
      */
-    public function notifyUser(int $userId, string $text): ?array
+    public function notifyUser(int $userId, string $text): mixed
     {
         $user = User::find($userId);
         if (! $user || ! $user->telegramSession || ! $user->telegramSession->chat_id) {
@@ -148,7 +148,7 @@ class TelegramBotService
     /**
      * Notify user about ticket resolution.
      */
-    public function notifyTicketResolved(Ticket $ticket): ?array
+    public function notifyTicketResolved(Ticket $ticket): mixed
     {
         $text = "✅ <b>Tiket #{$ticket->id} Telah Diselesaikan</b>\n\n"
             . "Subjek: {$ticket->subject}\n"
@@ -179,7 +179,7 @@ class TelegramBotService
     /**
      * Build main menu keyboard.
      */
-    public function sendMainMenu(string $chatId): ?array
+    public function sendMainMenu(string $chatId): mixed
     {
         $text = "🏢 <b>ARKA HelpDesk</b>\n\n"
             . 'Selamat datang di ARKA HelpDesk! Silakan pilih menu di bawah ini:';
